@@ -10,6 +10,36 @@ from markdownify import markdownify as md
 from frappe.utils import update_progress_bar
 
 
+def update_progress_bar(txt, i, l, absolute=False):
+    import os, sys
+
+    if os.environ.get("CI"):
+        if i == 0:
+            sys.stdout.write(txt)
+
+        sys.stdout.write(".")
+        sys.stdout.flush()
+        return
+
+    if not getattr(frappe.local, "request", None) or is_cli():  # pragma: no cover
+        lt = len(txt)
+        try:
+            col = 40 if os.get_terminal_size().columns > 80 else 20
+        except OSError:
+            # in case function isn't being called from a terminal
+            col = 40
+
+        if lt < 36:
+            txt = txt + " " * (36 - lt)
+
+        complete = int(float(i + 1) / l * col)
+        completion_bar = ("=" * complete).ljust(col, " ")
+        percent_complete = f"{int(float(i + 1) / l * 100)!s}%"
+        status = f"{i} of {l}" if absolute else percent_complete
+        sys.stdout.write(f"\r{txt}: [{completion_bar}] {status}")
+        sys.stdout.flush()
+
+
 class ApexSearch:
     def __init__(self, index_path, tables, id_field="name", seperator="|||"):
         self.index = Index.open(index_path)
