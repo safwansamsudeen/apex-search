@@ -1,0 +1,18 @@
+[project]
+name = "apex-search"
+version = "0.0.1"
+authors = [
+  { name="Frappe Technologies Pvt. Ltd.", email="author@example.com" },
+]
+description = "A full text search implementation in Python"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/safwansamsudeen/apex-search"
+Issues = "https://github.com/safwansamsudeen/apex-search/issues"
