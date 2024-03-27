@@ -47,9 +47,14 @@ class ApexSearch:
         self.set_schema()
         try:
             self.index = Index.open(index_path)
+            self.index_exists = True
         except:
             self.index = Index(self.schema, path=index_path)
-        self.writer = self.index.writer()
+            self.index_exists = False
+        try:
+            self.writer = self.index.writer()
+        except ValueError:
+            self.writer = None
         self.searcher = self.index.searcher()
 
     def set_schema(self):
@@ -62,7 +67,7 @@ class ApexSearch:
         schema_builder.add_text_field("table", stored=True)
         self.schema = schema_builder.build()
 
-    def build_complete_index(self, obtain_func, fields_func = None):
+    def build_complete_index(self, obtain_func):
         # Reset index
         self.writer.delete_all_documents()
         self.writer.commit()
@@ -84,16 +89,14 @@ class ApexSearch:
 
             for record in db_records:
                 title = record.pop(title_field) if title_field else ""
-                if fields_func:
-                    fields = fields_func(record)
-                else:
-                    fields = {}
-                    for extra_field in extra_fields:
-                        fields[extra_field] = record.pop(extra_field)
 
-                        # Handle dates correctly
-                        if isinstance(fields[extra_field], datetime):
-                            fields[extra_field] = fields[extra_field].isoformat()
+                fields = {}
+                for extra_field in extra_fields:
+                    fields[extra_field] = record.pop(extra_field)
+
+                    # Handle dates correctly
+                    if isinstance(fields[extra_field], datetime):
+                        fields[extra_field] = fields[extra_field].isoformat()
 
                 data = {
                     "id": f"{table}-{record[self.id_field]}",
@@ -203,7 +206,10 @@ class ApexSearch:
             reverse=True,
         )
 
-        n, final_results = len(result_docs[:target_number]), result_docs[:target_number]
+        n, final_results = (
+            len(result_docs[:target_number]),
+            result_docs,
+        )  # [:target_number]
 
         if not final_results and not fuzzy:
             res = self.search(query_text, target_number, True)
@@ -214,6 +220,45 @@ class ApexSearch:
             "duration": 0,
             "total": n,
         }
+
+    def reindex_record(self, record, table=None):
+        table = table or record["table"]
+        details = self.tables[table]
+
+        content_fields = details["content"]
+        extra_fields = details.get("fields", [])
+        title_field = details.get("title", None)
+
+        title = record.pop(title_field) if title_field else ""
+        fields = {}
+        for extra_field in extra_fields:
+            fields[extra_field] = record.pop(extra_field)
+
+            # Handle dates correctly
+            if isinstance(fields[extra_field], datetime):
+                fields[extra_field] = fields[extra_field].isoformat()
+
+        data = {
+            "id": f"{table}-{record[self.id_field]}",
+            "table": table,
+            "name": record[self.id_field],
+            "title": str(title),
+            "content": self.separator.join(
+                map(
+                    lambda x: md(str(x), convert=[]),
+                    (getattr(record, field) for field in content_fields),
+                )
+            ),
+            "fields": fields,
+        }
+        self.delete_doc(f"{table}-{record[self.id_field]}")
+        self.writer.delete_documents("id", id)
+        self.writer.add_document(Document(**data))
+        self.writer.commit()
+
+    def delete_record(self, id):
+        self.writer.delete_documents("id", id)
+        self.writer.commit()
 
 
 def highlight(results, searcher, query, schema):

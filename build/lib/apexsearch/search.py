@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Frappe Technologies Pvt Ltd and contributors
+# Copyright (c) 2024, Frappe Technologies Pvt. Ltd. and Contributors
 # For license information, please see license.txt
 from __future__ import unicode_literals
 
@@ -47,9 +47,14 @@ class ApexSearch:
         self.set_schema()
         try:
             self.index = Index.open(index_path)
+            self.index_exists = True
         except:
             self.index = Index(self.schema, path=index_path)
-        self.writer = self.index.writer()
+            self.index_exists = False
+        try:
+            self.writer = self.index.writer()
+        except ValueError:
+            self.writer = None
         self.searcher = self.index.searcher()
 
     def set_schema(self):
@@ -62,7 +67,7 @@ class ApexSearch:
         schema_builder.add_text_field("table", stored=True)
         self.schema = schema_builder.build()
 
-    def build_complete_index(self, obtain_func):
+    def build_complete_index(self, obtain_func, fields_func=None):
         # Reset index
         self.writer.delete_all_documents()
         self.writer.commit()
@@ -84,14 +89,16 @@ class ApexSearch:
 
             for record in db_records:
                 title = record.pop(title_field) if title_field else ""
-                fields = {}
+                if fields_func:
+                    fields = fields_func(record)
+                else:
+                    fields = {}
+                    for extra_field in extra_fields:
+                        fields[extra_field] = record.pop(extra_field)
 
-                for extra_field in extra_fields:
-                    fields[extra_field] = record.pop(extra_field)
-
-                    # Handle dates correctly
-                    if isinstance(fields[extra_field], datetime):
-                        fields[extra_field] = fields[extra_field].isoformat()
+                        # Handle dates correctly
+                        if isinstance(fields[extra_field], datetime):
+                            fields[extra_field] = fields[extra_field].isoformat()
 
                 data = {
                     "id": f"{table}-{record[self.id_field]}",
@@ -106,7 +113,6 @@ class ApexSearch:
                     ),
                     "fields": fields,
                 }
-                # print(data)
                 self.writer.add_document(Document(**data))
 
                 no_records += 1
@@ -202,7 +208,10 @@ class ApexSearch:
             reverse=True,
         )
 
-        n, final_results = len(result_docs[:target_number]), result_docs[:target_number]
+        n, final_results = (
+            len(result_docs[:target_number]),
+            result_docs,
+        )  # [:target_number]
 
         if not final_results and not fuzzy:
             res = self.search(query_text, target_number, True)
@@ -226,7 +235,6 @@ def highlight(results, searcher, query, schema):
         doc = searcher.doc(DocAddress(segment_ord, _doc))
         title_snippet = title_snippet_generator.snippet_from_doc(doc)
         content_snippet = content_snippet_generator.snippet_from_doc(doc)
-        print(doc)
         cleaned_results.append(
             {
                 "name": doc["name"][0],
