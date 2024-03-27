@@ -7,6 +7,7 @@ from datetime import datetime
 from tantivy import Document, Index, SchemaBuilder, DocAddress, SnippetGenerator
 
 from markdownify import markdownify as md
+from timeit import default_timer as timer
 
 
 def update_progress_bar(txt, i, l, absolute=False):
@@ -67,7 +68,7 @@ class ApexSearch:
         schema_builder.add_text_field("table", stored=True)
         self.schema = schema_builder.build()
 
-    def build_complete_index(self, obtain_func, fields_func=None):
+    def build_complete_index(self, obtain_func):
         # Reset index
         self.writer.delete_all_documents()
         self.writer.commit()
@@ -89,16 +90,14 @@ class ApexSearch:
 
             for record in db_records:
                 title = record.pop(title_field) if title_field else ""
-                if fields_func:
-                    fields = fields_func(record)
-                else:
-                    fields = {}
-                    for extra_field in extra_fields:
-                        fields[extra_field] = record.pop(extra_field)
 
-                        # Handle dates correctly
-                        if isinstance(fields[extra_field], datetime):
-                            fields[extra_field] = fields[extra_field].isoformat()
+                fields = {}
+                for extra_field in extra_fields:
+                    fields[extra_field] = record.pop(extra_field)
+
+                    # Handle dates correctly
+                    if isinstance(fields[extra_field], datetime):
+                        fields[extra_field] = fields[extra_field].isoformat()
 
                 data = {
                     "id": f"{table}-{record[self.id_field]}",
@@ -122,6 +121,7 @@ class ApexSearch:
         return no_records
 
     def search(self, query_text, target_number=20, fuzzy=False):
+        start = timer()
         tokens = query_text.split()
         hits = []
         highlights = []
@@ -158,13 +158,12 @@ class ApexSearch:
             if fuzzy:
                 return {
                     "results": [],
-                    # TBD
-                    "duration": 0,
+                    "duration": (timer() - start) * 1000,
                     "total": 0,
                 }
             else:
                 res = self.search(query_text, target_number, True)
-                return {**res, "duration": res["duration"] + 0}
+                return {**res, "duration": res["duration"] + (timer() - start) * 1000}
 
         results = list(set.intersection(*hits))
 
@@ -211,17 +210,54 @@ class ApexSearch:
         n, final_results = (
             len(result_docs[:target_number]),
             result_docs,
-        )  # [:target_number]
-
+        )
         if not final_results and not fuzzy:
             res = self.search(query_text, target_number, True)
             return {**res, "duration": res["duration"] + 0}
-
+        print((timer() - start) * 1000)
         return {
             "results": final_results,
-            "duration": 0,
+            "duration": (timer() - start) * 1000,
             "total": n,
         }
+
+    def reindex_record(self, record, table=None):
+        table = table or record["table"]
+        details = self.tables[table]
+
+        content_fields = details["content"]
+        extra_fields = details.get("fields", [])
+        title_field = details.get("title", None)
+
+        title = record.pop(title_field) if title_field else ""
+        fields = {}
+        for extra_field in extra_fields:
+            fields[extra_field] = record.pop(extra_field)
+
+            # Handle dates correctly
+            if isinstance(fields[extra_field], datetime):
+                fields[extra_field] = fields[extra_field].isoformat()
+
+        data = {
+            "id": f"{table}-{record[self.id_field]}",
+            "table": table,
+            "name": record[self.id_field],
+            "title": str(title),
+            "content": self.separator.join(
+                map(
+                    lambda x: md(str(x), convert=[]),
+                    (getattr(record, field) for field in content_fields),
+                )
+            ),
+            "fields": fields,
+        }
+        self.writer.delete_documents("id", data["id"])
+        self.writer.add_document(Document(**data))
+        self.writer.commit()
+
+    def delete_record(self, id):
+        self.writer.delete_documents("id", id)
+        self.writer.commit()
 
 
 def highlight(results, searcher, query, schema):

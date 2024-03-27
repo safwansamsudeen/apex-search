@@ -7,6 +7,7 @@ from datetime import datetime
 from tantivy import Document, Index, SchemaBuilder, DocAddress, SnippetGenerator
 
 from markdownify import markdownify as md
+from timeit import default_timer as timer
 
 
 def update_progress_bar(txt, i, l, absolute=False):
@@ -120,6 +121,7 @@ class ApexSearch:
         return no_records
 
     def search(self, query_text, target_number=20, fuzzy=False):
+        start = timer()
         tokens = query_text.split()
         hits = []
         highlights = []
@@ -156,13 +158,12 @@ class ApexSearch:
             if fuzzy:
                 return {
                     "results": [],
-                    # TBD
-                    "duration": 0,
+                    "duration": (timer() - start) * 1000,
                     "total": 0,
                 }
             else:
                 res = self.search(query_text, target_number, True)
-                return {**res, "duration": res["duration"] + 0}
+                return {**res, "duration": res["duration"] + (timer() - start) * 1000}
 
         results = list(set.intersection(*hits))
 
@@ -209,15 +210,14 @@ class ApexSearch:
         n, final_results = (
             len(result_docs[:target_number]),
             result_docs,
-        )  # [:target_number]
-
+        )
         if not final_results and not fuzzy:
             res = self.search(query_text, target_number, True)
             return {**res, "duration": res["duration"] + 0}
-
+        print((timer() - start) * 1000)
         return {
             "results": final_results,
-            "duration": 0,
+            "duration": (timer() - start) * 1000,
             "total": n,
         }
 
@@ -251,8 +251,7 @@ class ApexSearch:
             ),
             "fields": fields,
         }
-        self.delete_doc(f"{table}-{record[self.id_field]}")
-        self.writer.delete_documents("id", id)
+        self.writer.delete_documents("id", data["id"])
         self.writer.add_document(Document(**data))
         self.writer.commit()
 
