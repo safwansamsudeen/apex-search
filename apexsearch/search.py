@@ -9,6 +9,8 @@ from tantivy import Document, Index, SchemaBuilder, DocAddress, SnippetGenerator
 from markdownify import markdownify as md
 from timeit import default_timer as timer
 
+writer = None
+
 
 def update_progress_bar(txt, i, l, absolute=False):
     import os, sys
@@ -52,11 +54,14 @@ class ApexSearch:
         except:
             self.index = Index(self.schema, path=index_path)
             self.index_exists = False
-        try:
-            self.writer = self.index.writer()
-        except ValueError:
-            self.writer = None
         self.searcher = self.index.searcher()
+
+        global writer
+        if not writer:
+            try:
+                writer = self.index.writer()
+            except ValueError:
+                print("Index writer couldn't be accessed.")
 
     def set_schema(self):
         schema_builder = SchemaBuilder()
@@ -70,8 +75,8 @@ class ApexSearch:
 
     def build_complete_index(self, obtain_func):
         # Reset index
-        self.writer.delete_all_documents()
-        self.writer.commit()
+        writer.delete_all_documents()
+        writer.commit()
 
         total = len(self.tables)
         no_records = 0
@@ -112,10 +117,10 @@ class ApexSearch:
                     ),
                     "fields": fields,
                 }
-                self.writer.add_document(Document(**data))
+                writer.add_document(Document(**data))
 
                 no_records += 1
-        self.writer.commit()
+        writer.commit()
 
         print()
         return no_records
@@ -251,13 +256,13 @@ class ApexSearch:
             ),
             "fields": fields,
         }
-        self.writer.delete_documents("id", data["id"])
-        self.writer.add_document(Document(**data))
-        self.writer.commit()
+        writer.delete_documents("id", data["id"])
+        writer.add_document(Document(**data))
+        writer.commit()
 
     def delete_record(self, id):
-        self.writer.delete_documents("id", id)
-        self.writer.commit()
+        writer.delete_documents("id", id)
+        writer.commit()
 
 
 def highlight(results, searcher, query, schema):
