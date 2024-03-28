@@ -1,6 +1,6 @@
 [project]
 name = "apex-search"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Frappe Technologies Pvt. Ltd.", email="author@example.com" },
 ]
@@ -16,3 +16,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/safwansamsudeen/apex-search"
 Issues = "https://github.com/safwansamsudeen/apex-search/issues"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
